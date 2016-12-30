@@ -6,21 +6,21 @@
 #
 # DifferentialMutationAnalysis("Data/BRCA_sample.maf")
 #
-# Output is a single two column file with protein names and their uEMD scores
-# named "uEMDscores.txt"
+# Output is a single two or three column file with protein names, their 
+# uEMD scores, and optionally, supporting q-values, named after the input
+# file with DiffMut appended to it (e.g. "BRCA_sample-DiffMut.txt")
 #
 # The code can optionally be run to search for oncogenes or tumor suprressor
 # genes separately by passing "onco" or "TSG" as options for geneType
 #
 # DifferentialMutationAnalysis("Data/BRCA_sample.maf", geneType="onco")
 #
-# Finally, the code can optionally compute supporting p-values for genes. To 
-# compute p-values for the p highest scoring genes, simply pass a value p
-#
-# DifferentialMutationAnalysis("Data/BRCA_sample.maf", p=100)
-#
-# This will generate a separate p-value file ordered by uEMD score called
-# "pvalues.txt"
+# Finally, the code can optionally compute supporting q-values for genes. To 
+# compute q-values simply pass a value p which determines the numer of
+# background distributions to generate (default is 5). Note that this comes at 
+# a cost to runtime.
+# 
+# DifferentialMutationAnalysis("Data/BRCA_sample.maf", p=5)
 #
 ###############################################################################
 
@@ -30,10 +30,11 @@ source("parseMaf.R")
 #rank normalize mutaton or variation counts
 fastRank = function(x) { 
   x[x!=0] = rank(x[x!=0], ties.method="min")+length(which(x==0)) 
-  x/length(x) }
+  x/length(x) 
+}
 
 #bin counts to build histogram
-bins = function(v, p=100){
+bins = function(v, p=100) {
   l = length(v)
   nBins = rep(0,p)
   for(val in v){
@@ -44,28 +45,47 @@ bins = function(v, p=100){
 }
 
 #compute unidirectional EMD between mutationas and variations
-uEMD = function(t_v, n_v, p=100){
-    tBins = bins(t_v, p)
-    nBins = bins(n_v, p)
+uEMD = function(tBins, nBins, p=100) {
     sum = 0
     move = 0
     for(i in p:1){
-        move = move+tBins[i]-nBins[i]
+        move = move+tBins[i]-nBins[i]+1-1
         sum = sum+max(move,0)
     }
     sum
 }
 
-#compute p-value for gene i
-pvalsP = function(i, uEMDscore, nRank, p, perms=100) {
-  length(which(sapply(1:perms, function(x) 
-    uEMD(sample(0:99, p, TRUE, bins(nRank[,i])+1/p^2)/99, nRank[,i]))>=uEMDscore[i]))/perms
+#generate random uEMDs to compute FDRs
+generateRandomEMDs = function(tRank, nRankBinned) {
+  permRank = t(apply(tRank, 1, sample))
+  permRankBinned = apply(permRank, 2, bins)
+  randEMDs = sapply(1:dim(nRankBinned)[2], function(x) uEMD(permRankBinned[,x], nRankBinned[,x]))
+  randEMDs
+}
+
+#compute FDRs based on random uEMDs
+computeFDR = function(uEMDscores, randEMDs) {
+  FDRs = sapply(uEMDscores, function(x) length(which(randEMDs>=x))/(length(which(uEMDscores>=x))))
+  FDRs
+}
+
+#compute q-values from FDRs
+computeQ = function(FDRs, uEMDscores) {
+  qVal = sapply(1:length(FDRs), function(x) min(FDRs[uEMDscores<=uEMDscores[x]]))
+  qVal
 }
 
 #Main Function for Differential Mutation Analysis
-DifferentialMutationAnalysis = function(mafFile, geneType="all", p=0){
+DifferentialMutationAnalysis = function(mafFile, geneType="all", p=5,
+                                        outDir = "Output/", 
+                                        protFile = "Data/protNames.txt", 
+                                        natBinFile = "Data/natDistBinned.txt") {
+
   #A list of protein names
-  protNames = read.table("Data/protNames.txt", stringsAsFactors=FALSE)$V1
+  protNames = read.table(protFile, stringsAsFactors=FALSE)$V1
+
+  #load ranked binned natural variation count data
+  nRankBinned = read.table(natBinFile)
 
   #determine if we want to find all cancer genes or just oncogenes or TSGs
   if(geneType=="onco"){
@@ -77,21 +97,32 @@ DifferentialMutationAnalysis = function(mafFile, geneType="all", p=0){
   else{
     tCount = parseMaf(protNames, mafFile)
   }
-  #load natural variation count data
-  natDistMis = read.table("Data/protMisDists_p3.txt")
   
-  #rank normalize mutations and variations
-  nRank = t(apply(natDistMis, 2, fastRank))
+  #rank normalize mutations
   tRank = t(apply(tCount, 1, fastRank))
 
+  #bin the rank distribution
+  tRankBinned = apply(tRank, 2, bins)
+
   #compute uEMD scores
-  uEMDscore = sapply(1:length(protNames), function(x) uEMD(tRank[,x], nRank[,x]))
+  uEMDscore = sapply(1:length(protNames), 
+    function(x) uEMD(tRankBinned[,x], nRankBinned[,x]))
 
-  write.table(cbind(protNames, uEMDscore), "uEMDscores.txt", quote=FALSE, row.names=FALSE)
+  #create output directory if it doesn't exist
+  if(!dir.exists(outDir)){ dir.create(outDir) }
 
-  #optionally compute p-values
-  if(p>0){
-    pval = sapply(order(-uEMDscore)[1:p], function(i) pvalsP(i, uEMDscore, nRank, dim(tRank)[1]))
-    write.table(cbind(protNames=protNames[order(-uEMDscore)[1:p]], pval), "pvals.txt", quote=FALSE, row.names=FALSE)
+  #output only uEMD scores if no q-values are needed (faster run time)
+  if(p==0){
+    write.table(cbind(protNames, uEMDscore), 
+      paste0(outDir, strsplit(basename(mafFile),".maf")[[1]],"-DiffMut.txt"), quote=FALSE, row.names=FALSE)
   }
+  else{
+    #compute q-values, p determines number of times random uEMDs are generated
+    FDRs = rowSums(sapply(1:p, function(x) 
+      computeFDR(uEMDscore, generateRandomEMDs(tRank, nRankBinned))))/p
+    qVal = computeQ(FDRs, uEMDscore)
+    write.table(cbind(protNames, uEMDscore, qVal), 
+      paste0(outDir, strsplit(basename(mafFile),".maf")[[1]],"-DiffMut.txt"), quote=FALSE, row.names=FALSE)
+  }
+
 }
