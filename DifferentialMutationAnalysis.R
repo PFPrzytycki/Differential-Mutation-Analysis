@@ -15,12 +15,13 @@
 #
 # DifferentialMutationAnalysis("Data/BRCA_sample.maf", geneType="onco")
 #
-# Finally, the code can optionally compute supporting q-values for genes. To 
+# Finally, the code computes supporting q-values for genes. To 
 # compute q-values simply pass a value p which determines the numer of
 # background distributions to generate (default is 5). Note that this comes at 
-# a cost to runtime.
+# a cost to runtime. The code can be run with no permutations to quickly output
+# a list of genes ranked by uEMD score.
 # 
-# DifferentialMutationAnalysis("Data/BRCA_sample.maf", p=5)
+# DifferentialMutationAnalysis("Data/BRCA_sample.maf", p=0)
 #
 ###############################################################################
 
@@ -48,8 +49,8 @@ bins = function(v, p=100) {
 uEMD = function(tBins, nBins, p=100) {
     sum = 0
     move = 0
-    for(i in p:1){
-        move = move+tBins[i]-nBins[i]+1-1
+    for(i in p:2){
+        move = move+tBins[i]-nBins[i]
         sum = sum+max(move,0)
     }
     sum
