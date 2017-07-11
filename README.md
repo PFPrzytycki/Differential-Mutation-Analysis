@@ -1,6 +1,6 @@
 # Differential Mutation Analysis
 
-Differential mutation analysis is a framework that uncovers cancer genes by comparing the mutational profiles of genes across cancer genomes with their natural germline variation profiles across healthy individuals.
+Differential mutation analysis is a framework that uncovers cancer genes by comparing the mutational profiles of genes across cancer genomes with their natural germline variation profiles across healthy individuals. If you want to try it out, visit [diffmut.princeton.edu](http://diffmut.princeton.edu).
 
 ![Method Overview](https://github.com/PFPrzytycki/Differential-Mutation-Analysis/blob/master/Method%20Overview.png)
 
