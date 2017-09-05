@@ -23,6 +23,9 @@
 # 
 # DifferentialMutationAnalysis("Data/BRCA_sample.maf", p=0)
 #
+# If you have the following three R packages: "data.table", "plyr", and
+# "Matrix" you can set the flag usePackages to TRUE to significantly decrease
+# file read time
 ###############################################################################
 
 #helper function to parse MAF file
@@ -47,13 +50,13 @@ bins = function(v, p=100) {
 
 #compute unidirectional EMD between mutationas and variations
 uEMD = function(tBins, nBins, p=100) {
-    sum = 0
-    move = 0
-    for(i in p:2){
-        move = move+tBins[i]-nBins[i]
-        sum = sum+max(move,0)
-    }
-    sum
+  sum = 0
+  move = 0
+  for(i in p:2){
+    move = move+tBins[i]-nBins[i]
+    sum = sum+max(move,0)
+  }
+  sum
 }
 
 #generate random uEMDs to compute FDRs
@@ -80,23 +83,35 @@ computeQ = function(FDRs, uEMDscores) {
 DifferentialMutationAnalysis = function(mafFile, geneType="all", p=5,
                                         outDir = "Output/", 
                                         protFile = "Data/protNames.txt", 
-                                        natBinFile = "Data/natDistBinned.txt") {
+                                        natBinFile = "Data/natDistBinned.txt",
+                                        usePackages = FALSE) {
+
+  if(usePackages){
+    library("data.table", quietly=TRUE)
+    library("plyr", quietly=TRUE)
+    library("Matrix", quietly=TRUE)
+  }
 
   #A list of protein names
   protNames = read.table(protFile, stringsAsFactors=FALSE)$V1
 
   #load ranked binned natural variation count data
-  nRankBinned = read.table(natBinFile)
+  if(!usePackages){
+    nRankBinned = read.table(natBinFile)
+  }
+  else{
+    nRankBinned = fread(natBinFile, data.table=FALSE)
+  }
 
   #determine if we want to find all cancer genes or just oncogenes or TSGs
   if(geneType=="onco"){
-    tCount = parseMaf(protNames, mafFile, "Missense_Mutation")
+    tCount = parseMaf(protNames, mafFile, usePackages, "Missense_Mutation")
   }
   if(geneType=="TSG"){
-    tCount = parseMaf(protNames, mafFile, "Nonsense_Mutation")
+    tCount = parseMaf(protNames, mafFile, usePackages, "Nonsense_Mutation")
   }
   else{
-    tCount = parseMaf(protNames, mafFile)
+    tCount = parseMaf(protNames, mafFile, usePackages)
   }
   
   #rank normalize mutations
