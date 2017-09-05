@@ -87,9 +87,10 @@ DifferentialMutationAnalysis = function(mafFile, geneType="all", p=5,
                                         usePackages = FALSE) {
 
   if(usePackages){
-    library("data.table", quietly=TRUE)
-    library("plyr", quietly=TRUE)
-    library("Matrix", quietly=TRUE)
+    library("data.table")
+    library("plyr")
+    library("methods")
+    library("Matrix")
   }
 
   #A list of protein names
